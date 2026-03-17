@@ -1,16 +1,40 @@
-node_modules
-.next
-dist
-build
-.venv
-__pycache__
-.pytest_cache
-.coverage
+# Environments
 .env
 .env.local
-alembic/versions/*.pyc
-*.log
-.DS_Store
-.idea
-.vscode
+.env.*.local
+.venv
+.change-review
 
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+
+# Node / frontend
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+
+# Local app artifacts
+.local_storage/
+.exports/
+
+# Logs
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Alembic / Python bytecode leftovers
+alembic/versions/*.pyc

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Impact Report",
+  "type": "object",
+  "required": ["summary", "changed_parts", "findings"],
+  "properties": {
+    "summary": {
+      "type": "object",
+      "required": ["direct_changes", "affected_parts", "high_risk_count"],
+      "properties": {
+        "direct_changes": { "type": "integer", "minimum": 0 },
+        "affected_parts": { "type": "integer", "minimum": 0 },
+        "high_risk_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "changed_parts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "change_type"],
+        "properties": {
+          "name": { "type": "string" },
+          "change_type": { "type": "string" },
+          "confidence": { "type": "number" }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["part_name", "severity", "risk_type", "recommended_check"],
+        "properties": {
+          "part_name": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "risk_type": { "type": "string" },
+          "reason_text": { "type": "string" },
+          "recommended_check": { "type": "string" },
+          "evidence": { "type": "object" }
+        }
+      }
+    }
+  }
+}

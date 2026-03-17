@@ -1,0 +1,37 @@
+{
+  "assembly_id": "asm_demo_after",
+  "name": "demo_enclosure_after",
+  "parts": [
+    {
+      "part_key": "enclosure_panel",
+      "name": "Enclosure Panel",
+      "parent_part_key": null,
+      "bbox": { "min": [0, 0, 0], "max": [92, 80, 5] },
+      "centroid": { "x": 46, "y": 40, "z": 2.5 },
+      "transform": { "translation": [0, 0, 0], "rotation": [0, 0, 0] },
+      "volume_estimate": 36800,
+      "geometry_signature": "sig_panel_v2",
+      "metadata": {}
+    },
+    {
+      "part_key": "mount_bracket",
+      "name": "Mount Bracket",
+      "parent_part_key": null,
+      "bbox": { "min": [10, 10, 5], "max": [30, 30, 20] },
+      "centroid": { "x": 20, "y": 20, "z": 12.5 },
+      "transform": { "translation": [0, 0, 0], "rotation": [0, 0, 0] },
+      "volume_estimate": 3000,
+      "geometry_signature": "sig_bracket_v1",
+      "metadata": {}
+    }
+  ],
+  "relationships": [
+    {
+      "source_part_key": "enclosure_panel",
+      "target_part_key": "mount_bracket",
+      "relationship_type": "adjacent",
+      "score": 0.9,
+      "evidence": { "distance_mm": 0.5 }
+    }
+  ]
+}

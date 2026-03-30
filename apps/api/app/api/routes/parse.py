@@ -10,8 +10,8 @@ from app.core.deps import get_current_user
 from app.db.models.core import ModelVersion, Part, Project, User
 from app.db.session import get_db
 from app.services.job_service import JobService
-from app.services.parse_service import ParseError, ParseService
-from app.services.persistence_service import PersistenceService
+from app.services.parse_service import ParseError
+from app.workers.factory import get_worker_backend
 
 router = APIRouter(tags=["parse"])
 
@@ -39,35 +39,19 @@ def parse_model_version(
     )
     job_service.mark_running(db, job)
 
-    model_version.parse_status = "running"
-    model_version.parse_error = None
-    db.commit()
-
-    parser = ParseService()
-    persistence = PersistenceService()
+    worker = get_worker_backend(db)
 
     try:
-        normalized = parser.parse_model(model_version.file_uri)
-        persistence.replace_model_contents(db, model_version, normalized)
-        db.commit()
+        result = worker.run_parse_model_version(str(model_version.id))
         job_service.mark_completed(
             db,
             job,
-            metadata_json={
-                "model_version_id": str(model_version.id),
-                "parse_status": model_version.parse_status,
-            },
+            metadata_json=result,
         )
     except ParseError as exc:
-        model_version.parse_status = "failed"
-        model_version.parse_error = str(exc)
-        db.commit()
         job_service.mark_failed(db, job, str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        model_version.parse_status = "failed"
-        model_version.parse_error = "Unexpected parse failure"
-        db.commit()
         job_service.mark_failed(db, job, "Unexpected parse failure")
         raise HTTPException(status_code=500, detail="Unexpected parse failure") from exc
 

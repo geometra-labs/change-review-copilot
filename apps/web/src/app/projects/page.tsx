@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 
+import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
 type Project = {
@@ -49,24 +50,26 @@ export default function ProjectsPage() {
   }
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Projects</h1>
+    <AppShell>
+      <div style={{ padding: 24 }}>
+        <h1>Projects</h1>
 
-      <form onSubmit={onCreate} style={{ display: "grid", gap: 8, maxWidth: 480, marginBottom: 24 }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
-        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
-        <button type="submit">Create Project</button>
-      </form>
+        <form onSubmit={onCreate} style={{ display: "grid", gap: 8, maxWidth: 480, marginBottom: 24 }}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Project name" />
+          <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" />
+          <button type="submit">Create Project</button>
+        </form>
 
-      {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
+        {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
 
-      <ul>
-        {projects.map((project) => (
-          <li key={project.id}>
-            <Link href={`/projects/${project.id}`}>{project.name}</Link>
-          </li>
-        ))}
-      </ul>
-    </main>
+        <ul>
+          {projects.map((project) => (
+            <li key={project.id}>
+              <Link href={`/projects/${project.id}`}>{project.name}</Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </AppShell>
   );
 }

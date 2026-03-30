@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import AppShell from "@/components/AppShell";
 import { getToken } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 import { pollUntil } from "@/lib/poll";
@@ -133,23 +134,25 @@ export default function UploadPage() {
   }
 
   return (
-    <main style={{ padding: 24 }}>
-      <h1>Upload Before / After Models</h1>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
-        <label>
-          Before file
-          <input type="file" accept=".json" onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)} />
-        </label>
-        <label>
-          After file
-          <input type="file" accept=".json" onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)} />
-        </label>
-        <button type="submit" disabled={Boolean(busyText)}>
-          {busyText ?? "Upload and Compare"}
-        </button>
-      </form>
+    <AppShell>
+      <div style={{ padding: 24 }}>
+        <h1>Upload Before / After Models</h1>
+        <form onSubmit={onSubmit} style={{ display: "grid", gap: 12, maxWidth: 480 }}>
+          <label>
+            Before file
+            <input type="file" accept=".json" onChange={(e) => setBeforeFile(e.target.files?.[0] ?? null)} />
+          </label>
+          <label>
+            After file
+            <input type="file" accept=".json" onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)} />
+          </label>
+          <button type="submit" disabled={Boolean(busyText)}>
+            {busyText ?? "Upload and Compare"}
+          </button>
+        </form>
 
-      {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
-    </main>
+        {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
+      </div>
+    </AppShell>
   );
 }

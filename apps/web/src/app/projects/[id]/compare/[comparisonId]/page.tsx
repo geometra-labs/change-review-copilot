@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import AppShell from "@/components/AppShell";
 import { apiFetch } from "@/lib/api";
 
 type Report = {
@@ -69,101 +70,95 @@ export default function ComparisonReportPage() {
     }
   }
 
-  if (error) {
-    return (
-      <main style={{ padding: 24 }}>
-        <p style={{ color: "crimson" }}>{error}</p>
-      </main>
-    );
-  }
-
-  if (!report) {
-    return (
-      <main style={{ padding: 24 }}>
-        <p>Loading report...</p>
-      </main>
-    );
-  }
-
   return (
-    <main style={{ padding: 24 }}>
-      <p>
-        <Link href={`/projects/${projectId}`}>{"<- Back to Project"}</Link>
-      </p>
+    <AppShell>
+      <div style={{ padding: 24 }}>
+        <p>
+          <Link href={`/projects/${projectId}`}>Back to Project</Link>
+        </p>
 
-      <h1>Comparison Report</h1>
-      <p>Status: {report.status}</p>
+        {error ? <p style={{ color: "crimson" }}>{error}</p> : null}
 
-      <section style={{ marginBottom: 24 }}>
-        <h2>Summary</h2>
-        <p>Direct changes: {report.summary.direct_changes}</p>
-        <p>Affected parts: {report.summary.affected_parts}</p>
-        <p>High-risk findings: {report.summary.high_risk_count}</p>
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2>Explanation</h2>
-        <p>{report.explanation.summary_text}</p>
-        <p>{report.explanation.inspect_next_text}</p>
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2>Diff</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Before</th>
-              <th>After</th>
-              <th>Change Type</th>
-              <th>Method</th>
-              <th>Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.diff.map((row, index) => (
-              <tr key={index}>
-                <td>{row.before_part_key ?? "-"}</td>
-                <td>{row.after_part_key ?? "-"}</td>
-                <td>{row.change_type}</td>
-                <td>{row.match_method}</td>
-                <td>{row.match_confidence}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section style={{ marginBottom: 24 }}>
-        <h2>Findings</h2>
-        {report.findings.length === 0 ? (
-          <p>No affected parts exceeded the current review threshold.</p>
+        {!report ? (
+          <p>Loading report...</p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Part</th>
-                <th>Severity</th>
-                <th>Risk</th>
-                <th>Why Flagged</th>
-                <th>Inspect Next</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.findings.map((finding, index) => (
-                <tr key={index}>
-                  <td>{finding.part_name}</td>
-                  <td>{finding.severity}</td>
-                  <td>{finding.risk_type}</td>
-                  <td>{finding.reason_text}</td>
-                  <td>{finding.recommended_check}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+          <>
+            <h1>Comparison Report</h1>
+            <p>Status: {report.status}</p>
 
-      <button onClick={exportReport}>Export JSON Report</button>
-    </main>
+            <section style={{ marginBottom: 24 }}>
+              <h2>Summary</h2>
+              <p>Direct changes: {report.summary.direct_changes}</p>
+              <p>Affected parts: {report.summary.affected_parts}</p>
+              <p>High-risk findings: {report.summary.high_risk_count}</p>
+            </section>
+
+            <section style={{ marginBottom: 24 }}>
+              <h2>Explanation</h2>
+              <p>{report.explanation.summary_text}</p>
+              <p>{report.explanation.inspect_next_text}</p>
+            </section>
+
+            <section style={{ marginBottom: 24 }}>
+              <h2>Diff</h2>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Before</th>
+                    <th>After</th>
+                    <th>Change Type</th>
+                    <th>Method</th>
+                    <th>Confidence</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.diff.map((row, index) => (
+                    <tr key={index}>
+                      <td>{row.before_part_key ?? "-"}</td>
+                      <td>{row.after_part_key ?? "-"}</td>
+                      <td>{row.change_type}</td>
+                      <td>{row.match_method}</td>
+                      <td>{row.match_confidence}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+
+            <section style={{ marginBottom: 24 }}>
+              <h2>Findings</h2>
+              {report.findings.length === 0 ? (
+                <p>No affected parts exceeded the current review threshold.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Part</th>
+                      <th>Severity</th>
+                      <th>Risk</th>
+                      <th>Why Flagged</th>
+                      <th>Inspect Next</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.findings.map((finding, index) => (
+                      <tr key={index}>
+                        <td>{finding.part_name}</td>
+                        <td>{finding.severity}</td>
+                        <td>{finding.risk_type}</td>
+                        <td>{finding.reason_text}</td>
+                        <td>{finding.recommended_check}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+
+            <button onClick={exportReport}>Export JSON Report</button>
+          </>
+        )}
+      </div>
+    </AppShell>
   );
 }

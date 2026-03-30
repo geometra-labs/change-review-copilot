@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_current_user
 from app.db.models.core import ModelVersion, Part, Project, User
 from app.db.session import get_db
+from app.services.job_service import JobService
 from app.services.parse_service import ParseError, ParseService
 from app.services.persistence_service import PersistenceService
 
@@ -29,6 +30,15 @@ def parse_model_version(
     if not project or project.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    job_service = JobService()
+    job = job_service.create_job(
+        db,
+        job_type="parse_model_version",
+        resource_type="model_version",
+        resource_id=model_version.id,
+    )
+    job_service.mark_running(db, job)
+
     model_version.parse_status = "running"
     model_version.parse_error = None
     db.commit()
@@ -40,20 +50,30 @@ def parse_model_version(
         normalized = parser.parse_model(model_version.file_uri)
         persistence.replace_model_contents(db, model_version, normalized)
         db.commit()
+        job_service.mark_completed(
+            db,
+            job,
+            metadata_json={
+                "model_version_id": str(model_version.id),
+                "parse_status": model_version.parse_status,
+            },
+        )
     except ParseError as exc:
         model_version.parse_status = "failed"
         model_version.parse_error = str(exc)
         db.commit()
+        job_service.mark_failed(db, job, str(exc))
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         model_version.parse_status = "failed"
         model_version.parse_error = "Unexpected parse failure"
         db.commit()
+        job_service.mark_failed(db, job, "Unexpected parse failure")
         raise HTTPException(status_code=500, detail="Unexpected parse failure") from exc
 
     return {
-        "job_id": f"parse-{model_version_id}",
-        "status": model_version.parse_status,
+        "job_id": str(job.id),
+        "status": job.status,
     }
 
 

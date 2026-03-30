@@ -4,8 +4,26 @@ import { FormEvent, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { getToken } from "@/lib/auth";
+import { apiFetch } from "@/lib/api";
+import { pollUntil } from "@/lib/poll";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+type JobResponse = {
+  id: string;
+  job_type: string;
+  resource_type: string;
+  resource_id: string;
+  status: string;
+  error_message: string | null;
+  metadata_json: Record<string, unknown>;
+};
+
+type ModelVersionResponse = {
+  id: string;
+  parse_status: string;
+  parse_error?: string | null;
+};
 
 export default function UploadPage() {
   const router = useRouter();
@@ -14,7 +32,7 @@ export default function UploadPage() {
   const [beforeFile, setBeforeFile] = useState<File | null>(null);
   const [afterFile, setAfterFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyText, setBusyText] = useState<string | null>(null);
 
   async function uploadVersion(label: string, file: File) {
     const token = getToken();
@@ -28,35 +46,48 @@ export default function UploadPage() {
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       body: form,
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
     return res.json();
   }
 
   async function parseVersion(modelVersionId: string) {
-    const token = getToken();
-    const res = await fetch(`${API_BASE}/model-versions/${modelVersionId}/parse`, {
+    return apiFetch<{ job_id: string; status: string }>(`/model-versions/${modelVersionId}/parse`, {
       method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  }
+
+  async function getModelVersion(modelVersionId: string) {
+    return apiFetch<ModelVersionResponse>(`/model-versions/${modelVersionId}`);
+  }
+
+  async function getJob(jobId: string) {
+    return apiFetch<JobResponse>(`/jobs/${jobId}`);
   }
 
   async function createComparison(beforeId: string, afterId: string) {
-    const token = getToken();
-    const res = await fetch(`${API_BASE}/projects/${projectId}/comparisons`, {
+    return apiFetch<{ id: string; job_id: string; status: string }>(`/projects/${projectId}/comparisons`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         before_model_version_id: beforeId,
         after_model_version_id: afterId,
       }),
     });
-    if (!res.ok) throw new Error(await res.text());
-    return res.json();
+  }
+
+  async function waitForJob(jobId: string) {
+    const job = await pollUntil(
+      () => getJob(jobId),
+      (value) => value.status === "completed" || value.status === "failed"
+    );
+
+    if (job.status === "failed") {
+      throw new Error(job.error_message || "Job failed");
+    }
+
+    return job;
   }
 
   async function onSubmit(e: FormEvent) {
@@ -68,20 +99,36 @@ export default function UploadPage() {
       return;
     }
 
-    setBusy(true);
     try {
+      setBusyText("Uploading files...");
       const before = await uploadVersion("before", beforeFile);
       const after = await uploadVersion("after", afterFile);
 
-      await parseVersion(before.id);
-      await parseVersion(after.id);
+      setBusyText("Parsing before version...");
+      const beforeParse = await parseVersion(before.id);
+      await waitForJob(beforeParse.job_id);
+      const beforeStatus = await getModelVersion(before.id);
+      if (beforeStatus.parse_status !== "completed") {
+        throw new Error(beforeStatus.parse_error || "Before version parse failed");
+      }
 
+      setBusyText("Parsing after version...");
+      const afterParse = await parseVersion(after.id);
+      await waitForJob(afterParse.job_id);
+      const afterStatus = await getModelVersion(after.id);
+      if (afterStatus.parse_status !== "completed") {
+        throw new Error(afterStatus.parse_error || "After version parse failed");
+      }
+
+      setBusyText("Creating comparison...");
       const comparison = await createComparison(before.id, after.id);
+      await waitForJob(comparison.job_id);
+
+      setBusyText(null);
       router.push(`/projects/${projectId}/compare/${comparison.id}`);
     } catch (err) {
+      setBusyText(null);
       setError(err instanceof Error ? err.message : "Upload flow failed");
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -97,8 +144,8 @@ export default function UploadPage() {
           After file
           <input type="file" accept=".json" onChange={(e) => setAfterFile(e.target.files?.[0] ?? null)} />
         </label>
-        <button type="submit" disabled={busy}>
-          {busy ? "Running..." : "Upload and Compare"}
+        <button type="submit" disabled={Boolean(busyText)}>
+          {busyText ?? "Upload and Compare"}
         </button>
       </form>
 

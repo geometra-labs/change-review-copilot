@@ -16,7 +16,7 @@ export function ImpactReport({ report }: ImpactReportProps) {
     <div>
       <h2>Impact report</h2>
       <p>
-        Report ID: {report.report_id} · Change event: {report.change_event_id}
+        Report ID: {report.report_id} | Change event: {report.change_event_id}
       </p>
 
       <h3>Warnings</h3>
@@ -24,16 +24,16 @@ export function ImpactReport({ report }: ImpactReportProps) {
         <p>No warnings.</p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0 }}>
-          {report.warnings.map((w: Warning) => (
+          {report.warnings.map((warning: Warning) => (
             <li
-              key={w.id}
+              key={warning.id}
               style={{
                 borderLeft: "3px solid #ccc",
                 padding: "0.5rem 0 0.5rem 0.75rem",
                 marginBottom: "0.5rem",
               }}
             >
-              <WarningLevel level={w.level} /> · {w.category}: {w.message}
+              <WarningLevel level={warning.level} /> | {warning.category}: {warning.message}
             </li>
           ))}
         </ul>

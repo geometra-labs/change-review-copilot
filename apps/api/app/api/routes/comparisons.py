@@ -25,6 +25,7 @@ from app.services.explanation_service import ExplanationService
 from app.services.export_service import ExportService
 from app.services.finding_persistence_service import FindingPersistenceService
 from app.services.impact_service import ImpactService
+from app.services.job_service import JobService
 
 router = APIRouter(tags=["comparisons"])
 
@@ -55,99 +56,123 @@ def create_comparison(
         project_id=project_id,
         before_model_version_id=payload.before_model_version_id,
         after_model_version_id=payload.after_model_version_id,
-        status="running",
+        status="queued",
         summary_json={},
     )
     db.add(run)
     db.commit()
     db.refresh(run)
 
-    before_parts = db.scalars(select(Part).where(Part.model_version_id == before_mv.id)).all()
-    after_parts = db.scalars(select(Part).where(Part.model_version_id == after_mv.id)).all()
-
-    diff_service = DiffService()
-    matches = diff_service.match_parts(
-        [
-            PartRecord(
-                part_key=part.part_key,
-                name=part.name,
-                bbox=part.bbox_json,
-                centroid=part.centroid_json,
-                geometry_signature=part.geometry_signature,
-                parent_part_key=part.parent_part_key,
-            )
-            for part in before_parts
-        ],
-        [
-            PartRecord(
-                part_key=part.part_key,
-                name=part.name,
-                bbox=part.bbox_json,
-                centroid=part.centroid_json,
-                geometry_signature=part.geometry_signature,
-                parent_part_key=part.parent_part_key,
-            )
-            for part in after_parts
-        ],
+    job_service = JobService()
+    job = job_service.create_job(
+        db,
+        job_type="create_comparison",
+        resource_type="comparison",
+        resource_id=run.id,
     )
+    job_service.mark_running(db, job)
 
-    before_by_key = {part.part_key: part for part in before_parts}
-    after_by_key = {part.part_key: part for part in after_parts}
+    try:
+        run.status = "running"
+        db.commit()
 
-    db.query(PartMatch).filter(PartMatch.comparison_run_id == run.id).delete()
-    db.flush()
+        before_parts = db.scalars(select(Part).where(Part.model_version_id == before_mv.id)).all()
+        after_parts = db.scalars(select(Part).where(Part.model_version_id == after_mv.id)).all()
 
-    for match in matches:
-        part_match = PartMatch(
-            comparison_run_id=run.id,
-            before_part_id=before_by_key[match["before_part_key"]].id if match["before_part_key"] in before_by_key else None,
-            after_part_id=after_by_key[match["after_part_key"]].id if match["after_part_key"] in after_by_key else None,
-            match_confidence=match["match_confidence"],
-            match_method=match["match_method"],
-            change_type=match["change_type"],
-        )
-        db.add(part_match)
-
-    changed_part_keys = {
-        match["after_part_key"] or match["before_part_key"]
-        for match in matches
-        if match["change_type"] != "unchanged" and (match["after_part_key"] or match["before_part_key"])
-    }
-
-    after_relationships = db.scalars(
-        select(Relationship).where(Relationship.model_version_id == after_mv.id)
-    ).all()
-    id_to_part = {part.id: part for part in after_parts}
-
-    relationship_payload = []
-    for rel in after_relationships:
-        src = id_to_part.get(rel.source_part_id)
-        dst = id_to_part.get(rel.target_part_id)
-        if not src or not dst:
-            continue
-        relationship_payload.append(
-            {
-                "source_part_key": src.part_key,
-                "target_part_key": dst.part_key,
-                "relationship_type": rel.relationship_type,
-                "score": rel.score,
-                "evidence": rel.evidence_json,
-            }
+        diff_service = DiffService()
+        matches = diff_service.match_parts(
+            [
+                PartRecord(
+                    part_key=part.part_key,
+                    name=part.name,
+                    bbox=part.bbox_json,
+                    centroid=part.centroid_json,
+                    geometry_signature=part.geometry_signature,
+                    parent_part_key=part.parent_part_key,
+                )
+                for part in before_parts
+            ],
+            [
+                PartRecord(
+                    part_key=part.part_key,
+                    name=part.name,
+                    bbox=part.bbox_json,
+                    centroid=part.centroid_json,
+                    geometry_signature=part.geometry_signature,
+                    parent_part_key=part.parent_part_key,
+                )
+                for part in after_parts
+            ],
         )
 
-    impact_payload = ImpactService().generate_findings(
-        changed_part_keys=changed_part_keys,
-        parts=[{"part_key": part.part_key, "name": part.name} for part in after_parts],
-        relationships=relationship_payload,
-    )
+        before_by_key = {part.part_key: part for part in before_parts}
+        after_by_key = {part.part_key: part for part in after_parts}
 
-    FindingPersistenceService().replace_findings(db, run, impact_payload)
+        db.query(PartMatch).filter(PartMatch.comparison_run_id == run.id).delete()
+        db.flush()
 
-    run.status = "completed"
-    db.commit()
+        for match in matches:
+            part_match = PartMatch(
+                comparison_run_id=run.id,
+                before_part_id=before_by_key[match["before_part_key"]].id if match["before_part_key"] in before_by_key else None,
+                after_part_id=after_by_key[match["after_part_key"]].id if match["after_part_key"] in after_by_key else None,
+                match_confidence=match["match_confidence"],
+                match_method=match["match_method"],
+                change_type=match["change_type"],
+            )
+            db.add(part_match)
+
+        changed_part_keys = {
+            match["after_part_key"] or match["before_part_key"]
+            for match in matches
+            if match["change_type"] != "unchanged" and (match["after_part_key"] or match["before_part_key"])
+        }
+
+        after_relationships = db.scalars(
+            select(Relationship).where(Relationship.model_version_id == after_mv.id)
+        ).all()
+        id_to_part = {part.id: part for part in after_parts}
+
+        relationship_payload = []
+        for rel in after_relationships:
+            src = id_to_part.get(rel.source_part_id)
+            dst = id_to_part.get(rel.target_part_id)
+            if not src or not dst:
+                continue
+            relationship_payload.append(
+                {
+                    "source_part_key": src.part_key,
+                    "target_part_key": dst.part_key,
+                    "relationship_type": rel.relationship_type,
+                    "score": rel.score,
+                    "evidence": rel.evidence_json,
+                }
+            )
+
+        impact_payload = ImpactService().generate_findings(
+            changed_part_keys=changed_part_keys,
+            parts=[{"part_key": part.part_key, "name": part.name} for part in after_parts],
+            relationships=relationship_payload,
+        )
+
+        FindingPersistenceService().replace_findings(db, run, impact_payload)
+
+        run.status = "completed"
+        db.commit()
+        job_service.mark_completed(
+            db,
+            job,
+            metadata_json={"comparison_id": str(run.id), "status": run.status},
+        )
+    except Exception as exc:
+        run.status = "failed"
+        db.commit()
+        job_service.mark_failed(db, job, "Comparison failed")
+        raise HTTPException(status_code=500, detail="Comparison failed") from exc
 
     return {
         "id": str(run.id),
+        "job_id": str(job.id),
         "status": run.status,
         "summary_json": run.summary_json,
     }
@@ -242,6 +267,7 @@ def get_report(
 
     return {
         "comparison_id": str(run.id),
+        "status": run.status,
         "diff": diff_rows,
         "summary": run.summary_json,
         "findings": finding_rows,

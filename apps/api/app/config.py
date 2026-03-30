@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,10 +28,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    secret_key: str
+    secret_key: str = "replace_me"
     access_token_expire_minutes: int = 60
 
-    database_url: str
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/crc"
 
     max_upload_mb: int = 100
     allowed_extensions: str = ".step,.stp,.stl,.obj,.glb,.json"
@@ -45,4 +48,9 @@ class Settings(BaseSettings):
         return {ext.strip().lower() for ext in self.allowed_extensions.split(",") if ext.strip()}
 
 
-settings = Settings()
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

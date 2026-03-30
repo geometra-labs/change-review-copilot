@@ -1,27 +1,22 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { AssemblyUpload } from "@/components/AssemblyUpload";
+import { useParams } from "next/navigation";
 
 export default function AssemblyPage() {
   const params = useParams();
-  const router = useRouter();
   const projectId = params.id as string;
 
   return (
-    <main>
-      <h1>Add assembly</h1>
+    <main style={{ padding: 24 }}>
+      <h1>Assembly Flow Retired</h1>
+      <p>The older assembly-only prototype flow has been replaced by the before/after upload flow.</p>
       <p>
-        <Link href={`/projects/${projectId}`}>← Project</Link>
+        <Link href={`/projects/${projectId}/upload`}>Go to Upload Before / After Versions</Link>
       </p>
-      <p style={{ marginTop: "1rem" }}>Mock: enter a name and source. No file or Onshape connection yet.</p>
-      <div style={{ marginTop: "1rem" }}>
-        <AssemblyUpload
-          projectId={projectId}
-          onSuccess={() => router.push(`/projects/${projectId}`)}
-        />
-      </div>
+      <p>
+        <Link href={`/projects/${projectId}`}>Back to Project</Link>
+      </p>
     </main>
   );
 }

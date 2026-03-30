@@ -10,6 +10,7 @@ from app.db.base import Base
 from app.db.models.core import (  # noqa: F401
     ComparisonRun,
     ImpactFinding,
+    JobRun,
     ModelVersion,
     Part,
     PartMatch,

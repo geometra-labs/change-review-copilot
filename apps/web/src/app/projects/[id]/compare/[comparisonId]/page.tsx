@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 
 type Report = {
   comparison_id: string;
+  status: string;
   diff: Array<{
     before_part_key: string | null;
     after_part_key: string | null;
@@ -37,12 +39,15 @@ type Report = {
 
 export default function ComparisonReportPage() {
   const params = useParams();
+  const projectId = params.id as string;
   const comparisonId = params.comparisonId as string;
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!comparisonId) return;
+    if (!comparisonId) {
+      return;
+    }
 
     apiFetch<Report>(`/comparisons/${comparisonId}/report`)
       .then(setReport)
@@ -50,7 +55,10 @@ export default function ComparisonReportPage() {
   }, [comparisonId]);
 
   async function exportReport() {
-    if (!comparisonId) return;
+    if (!comparisonId) {
+      return;
+    }
+
     try {
       const result = await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export`, {
         method: "POST",
@@ -79,7 +87,12 @@ export default function ComparisonReportPage() {
 
   return (
     <main style={{ padding: 24 }}>
+      <p>
+        <Link href={`/projects/${projectId}`}>{"<- Back to Project"}</Link>
+      </p>
+
       <h1>Comparison Report</h1>
+      <p>Status: {report.status}</p>
 
       <section style={{ marginBottom: 24 }}>
         <h2>Summary</h2>

@@ -58,7 +58,7 @@ export function AssemblyUpload({ projectId, onSuccess }: AssemblyUploadProps) {
       </div>
       {error && <p style={{ color: "red", marginTop: "0.5rem" }}>{error}</p>}
       <button type="submit" disabled={loading} style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}>
-        {loading ? "Adding…" : "Add assembly"}
+        {loading ? "Adding..." : "Add assembly"}
       </button>
     </form>
   );

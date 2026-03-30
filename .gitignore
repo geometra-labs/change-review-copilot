@@ -11,15 +11,20 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.pytest_tmp/
+pytest_tmp/
+.ruff_cache/
 .coverage
 .coverage.*
 coverage.xml
 htmlcov/
 *.egg-info/
+tmp*/
 
 # Node / frontend
 node_modules/
 .next/
+*.tsbuildinfo
 dist/
 build/
 .turbo/

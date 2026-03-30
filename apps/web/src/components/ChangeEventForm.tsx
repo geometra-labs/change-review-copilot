@@ -51,9 +51,9 @@ export function ChangeEventForm({ projectId, assemblyId, onSuccess }: ChangeEven
           disabled={loading}
           style={{ padding: "0.5rem", marginTop: "0.25rem" }}
         >
-          {CHANGE_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
+          {CHANGE_TYPES.map((typeValue) => (
+            <option key={typeValue} value={typeValue}>
+              {typeValue}
             </option>
           ))}
         </select>
@@ -72,7 +72,7 @@ export function ChangeEventForm({ projectId, assemblyId, onSuccess }: ChangeEven
       </div>
       {error && <p style={{ color: "red", marginTop: "0.5rem" }}>{error}</p>}
       <button type="submit" disabled={loading} style={{ marginTop: "1rem", padding: "0.5rem 1rem" }}>
-        {loading ? "Creating…" : "Create change event"}
+        {loading ? "Creating..." : "Create change event"}
       </button>
     </form>
   );

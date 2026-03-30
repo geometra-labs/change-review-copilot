@@ -42,6 +42,7 @@ export default function LoginPage() {
   return (
     <main style={{ padding: 24, maxWidth: 480 }}>
       <h1>{mode === "login" ? "Login" : "Register"}</h1>
+      <p>Seeded demo account: demo@example.com / password123</p>
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
         <input

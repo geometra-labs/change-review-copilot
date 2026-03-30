@@ -26,6 +26,7 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]
+addopts = "-p no:cacheprovider -p no:tmpdir"
 
 [build-system]
 requires = ["setuptools>=68"]

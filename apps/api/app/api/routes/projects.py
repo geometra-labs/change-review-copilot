@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
-from app.db.models.core import ModelVersion, Project, User
+from app.db.models.core import ComparisonRun, ModelVersion, Project, User
 from app.db.session import get_db
 from app.schemas.project import ProjectCreate
 
@@ -72,6 +72,11 @@ def get_project(
         .where(ModelVersion.project_id == project.id)
         .order_by(ModelVersion.created_at.desc())
     ).all()
+    comparisons = db.scalars(
+        select(ComparisonRun)
+        .where(ComparisonRun.project_id == project.id)
+        .order_by(ComparisonRun.created_at.desc())
+    ).all()
 
     return {
         "id": str(project.id),
@@ -84,8 +89,20 @@ def get_project(
                 "label": model_version.label,
                 "source_type": model_version.source_type,
                 "parse_status": model_version.parse_status,
+                "parse_error": model_version.parse_error,
                 "created_at": model_version.created_at.isoformat(),
             }
             for model_version in model_versions
+        ],
+        "comparisons": [
+            {
+                "id": str(comparison.id),
+                "before_model_version_id": str(comparison.before_model_version_id),
+                "after_model_version_id": str(comparison.after_model_version_id),
+                "status": comparison.status,
+                "summary_json": comparison.summary_json,
+                "created_at": comparison.created_at.isoformat(),
+            }
+            for comparison in comparisons
         ],
     }

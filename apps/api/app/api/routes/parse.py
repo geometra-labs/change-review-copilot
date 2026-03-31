@@ -6,12 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.deps import get_current_user
 from app.db.models.core import ModelVersion, Part, Project, User
 from app.db.session import get_db
+from app.services.execution_service import ExecutionService
 from app.services.job_service import JobService
-from app.services.parse_service import ParseError
-from app.workers.factory import get_worker_backend
+from app.workers.factory import get_task_queue
 
 router = APIRouter(tags=["parse"])
 
@@ -30,34 +31,32 @@ def parse_model_version(
     if not project or project.owner_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    job_service = JobService()
-    job = job_service.create_job(
+    job = JobService().create_job(
         db,
         job_type="parse_model_version",
         resource_type="model_version",
         resource_id=model_version.id,
     )
-    job_service.mark_running(db, job)
 
-    worker = get_worker_backend(db)
+    if settings.task_backend == "rq":
+        queue_task_id = get_task_queue().enqueue("parse_model_version_job", {"job_id": str(job.id)})
+        return {
+            "job_id": str(job.id),
+            "queue_task_id": queue_task_id,
+            "status": job.status,
+        }
 
     try:
-        result = worker.run_parse_model_version(str(model_version.id))
-        job_service.mark_completed(
-            db,
-            job,
-            metadata_json=result,
-        )
-    except ParseError as exc:
-        job_service.mark_failed(db, job, str(exc))
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        ExecutionService(db).execute_parse_job(str(job.id))
     except Exception as exc:
-        job_service.mark_failed(db, job, "Unexpected parse failure")
-        raise HTTPException(status_code=500, detail="Unexpected parse failure") from exc
+        safe_error = str(exc) if str(exc) else "Parse failed"
+        raise HTTPException(status_code=400, detail=safe_error) from exc
+
+    refreshed = db.get(type(job), job.id)
 
     return {
         "job_id": str(job.id),
-        "status": job.status,
+        "status": refreshed.status if refreshed else "unknown",
     }
 
 

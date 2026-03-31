@@ -18,3 +18,18 @@ def test_diff_service_classifies_added_removed_and_changed() -> None:
     assert change_types["a"] == "unchanged"
     assert change_types["b"] == "moved"
     assert change_types["c"] == "added"
+
+
+def test_diff_service_emits_uncertain_match_when_only_nearest_centroid_matches() -> None:
+    before = [
+        PartRecord("old_key", "Bracket Old", {}, {"x": 10, "y": 0, "z": 0}, None, None),
+    ]
+    after = [
+        PartRecord("new_key", "Bracket Renamed", {}, {"x": 12, "y": 0, "z": 0}, None, None),
+    ]
+
+    results = DiffService().match_parts(before, after)
+    assert len(results) == 1
+    assert results[0]["change_type"] == "uncertain_match"
+    assert results[0]["match_method"] == "spatial_fallback_uncertain"
+    assert results[0]["match_confidence"] >= 0.45

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.deps import get_current_user
 from app.db.models.core import (
     ComparisonRun,
@@ -19,10 +20,11 @@ from app.db.models.core import (
 )
 from app.db.session import get_db
 from app.schemas.comparison import ComparisonCreate
+from app.services.execution_service import ExecutionService
 from app.services.explanation_service import ExplanationService
 from app.services.export_service import ExportService
 from app.services.job_service import JobService
-from app.workers.factory import get_worker_backend
+from app.workers.factory import get_task_queue
 
 router = APIRouter(tags=["comparisons"])
 
@@ -60,32 +62,36 @@ def create_comparison(
     db.commit()
     db.refresh(run)
 
-    job_service = JobService()
-    job = job_service.create_job(
+    job = JobService().create_job(
         db,
         job_type="create_comparison",
         resource_type="comparison",
         resource_id=run.id,
     )
-    job_service.mark_running(db, job)
 
-    worker = get_worker_backend(db)
+    if settings.task_backend == "rq":
+        queue_task_id = get_task_queue().enqueue("create_comparison_job", {"job_id": str(job.id)})
+        return {
+            "id": str(run.id),
+            "job_id": str(job.id),
+            "queue_task_id": queue_task_id,
+            "status": run.status,
+            "summary_json": run.summary_json,
+        }
 
     try:
-        result = worker.run_create_comparison(str(run.id))
-        job_service.mark_completed(db, job, metadata_json=result)
+        ExecutionService(db).execute_comparison_job(str(job.id))
     except Exception as exc:
-        run.status = "failed"
-        db.commit()
         safe_error = str(exc) if str(exc) else "Comparison failed"
-        job_service.mark_failed(db, job, safe_error)
-        raise HTTPException(status_code=500, detail="Comparison failed") from exc
+        raise HTTPException(status_code=400, detail=safe_error) from exc
+
+    refreshed = db.get(ComparisonRun, run.id)
 
     return {
-        "id": str(run.id),
+        "id": str(refreshed.id),
         "job_id": str(job.id),
-        "status": run.status,
-        "summary_json": run.summary_json,
+        "status": refreshed.status,
+        "summary_json": refreshed.summary_json,
     }
 
 
@@ -176,6 +182,30 @@ def get_report(
         {"summary": run.summary_json, "findings": finding_rows}
     )
 
+    viewer_nodes: dict[str, dict] = {}
+    status_rank = {"unchanged": 0, "changed": 1, "low": 2, "medium": 3, "high": 4}
+
+    for row in diff_rows:
+        node_status = "changed" if row["change_type"] != "unchanged" else "unchanged"
+        for key in [row["before_part_key"], row["after_part_key"]]:
+            if not key:
+                continue
+            current = viewer_nodes.get(key)
+            if current is None or status_rank[node_status] > status_rank.get(current["status"], 0):
+                viewer_nodes[key] = {"part_key": key, "status": node_status}
+
+    for finding in finding_rows:
+        part_key = finding["part_key"]
+        if not part_key:
+            continue
+        current = viewer_nodes.get(part_key)
+        if current is None or status_rank[finding["severity"]] > status_rank.get(current["status"], 0):
+            viewer_nodes[part_key] = {
+                "part_key": part_key,
+                "status": finding["severity"],
+                "risk_type": finding["risk_type"],
+            }
+
     return {
         "comparison_id": str(run.id),
         "status": run.status,
@@ -183,6 +213,15 @@ def get_report(
         "summary": run.summary_json,
         "findings": finding_rows,
         "explanation": explanation,
+        "viewer_payload": {
+            "nodes": list(viewer_nodes.values()),
+            "legend": {
+                "changed": "blue",
+                "high": "red",
+                "medium": "orange",
+                "low": "yellow",
+            },
+        },
     }
 
 

@@ -80,3 +80,23 @@ def get_model_version(
         "parse_error": mv.parse_error,
         "created_at": mv.created_at.isoformat(),
     }
+
+
+@router.delete("/model-versions/{model_version_id}")
+def delete_model_version(
+    model_version_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.services.cleanup_service import CleanupService
+
+    model_version = db.get(ModelVersion, model_version_id)
+    if not model_version:
+        raise HTTPException(status_code=404, detail="Model version not found")
+
+    project = db.get(Project, model_version.project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    CleanupService().delete_model_version(db, model_version)
+    return {"deleted": True}

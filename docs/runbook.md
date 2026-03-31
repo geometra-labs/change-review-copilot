@@ -50,3 +50,20 @@ Windows:
 - demo fixture run passing
 - structured logs enabled
 - error monitoring configured
+
+## Queue-backed mode
+
+Set:
+- `TASK_BACKEND=rq`
+- `REDIS_URL=redis://localhost:6379/0`
+
+Then run:
+1. `docker-compose up -d`
+2. `make api`
+3. `make worker`
+
+In queue-backed mode:
+- routes create `JobRun` rows
+- tasks are enqueued to Redis/RQ
+- worker process executes parse/comparison
+- UI polls `/jobs/{id}`

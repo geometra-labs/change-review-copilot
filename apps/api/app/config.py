@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
 
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/crc"
+    redis_url: str = "redis://localhost:6379/0"
+    task_backend: str = "local"
 
     max_upload_mb: int = 100
     allowed_extensions: str = ".step,.stp,.stl,.obj,.glb,.json"

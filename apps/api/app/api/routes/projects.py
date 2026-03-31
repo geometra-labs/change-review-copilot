@@ -106,3 +106,21 @@ def get_project(
             for comparison in comparisons
         ],
     }
+
+
+@router.delete("/{project_id}")
+def delete_project(
+    project_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.services.cleanup_service import CleanupService
+
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if project.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    CleanupService().delete_project(db, project)
+    return {"deleted": True}

@@ -9,7 +9,10 @@ class ImpactService:
         changed_part_keys: set[str],
         parts: list[dict],
         relationships: list[dict],
+        uncertain_part_keys: set[str] | None = None,
     ) -> dict:
+        uncertain_part_keys = uncertain_part_keys or set()
+
         adjacency: dict[str, list[dict]] = defaultdict(list)
         for rel in relationships:
             src = rel["source_part_key"]
@@ -25,16 +28,28 @@ class ImpactService:
                 }
             )
 
-        parts_by_key = {p["part_key"]: p for p in parts}
+        parts_by_key = {part["part_key"]: part for part in parts}
         findings: list[dict] = []
 
         for changed_key in changed_part_keys:
+            if changed_key not in adjacency:
+                continue
+
+            upstream_uncertain = changed_key in uncertain_part_keys
+
             for rel in adjacency.get(changed_key, []):
                 target_key = rel["target_part_key"]
-                if target_key in changed_part_keys or target_key not in parts_by_key:
+                if target_key in changed_part_keys:
+                    continue
+                if target_key not in parts_by_key:
                     continue
 
                 risk_type, severity, recommended_check = self._classify_relationship(rel)
+
+                if upstream_uncertain:
+                    severity = self._downgrade_severity(severity)
+                    risk_type = f"uncertain_{risk_type}"
+
                 findings.append(
                     {
                         "part_key": target_key,
@@ -46,10 +61,16 @@ class ImpactService:
                             "relationship_type": rel["relationship_type"],
                             "relationship_score": rel.get("score", 0.0),
                             "relationship_evidence": rel.get("evidence", {}),
+                            "uncertain_match": upstream_uncertain,
                         },
-                        "reason_text": self._reason_text(parts_by_key[target_key]["name"], changed_key, rel),
+                        "reason_text": self._reason_text(
+                            parts_by_key[target_key]["name"],
+                            changed_key,
+                            rel,
+                            upstream_uncertain,
+                        ),
                         "recommended_check": recommended_check,
-                        "rank_score": self._rank_score(rel, severity),
+                        "rank_score": self._rank_score(rel, severity, upstream_uncertain),
                     }
                 )
 
@@ -58,7 +79,10 @@ class ImpactService:
         summary = {
             "direct_changes": len(changed_part_keys),
             "affected_parts": len(findings),
-            "high_risk_count": sum(1 for f in findings if f["severity"] == "high"),
+            "high_risk_count": sum(1 for finding in findings if finding["severity"] == "high"),
+            "uncertain_finding_count": sum(
+                1 for finding in findings if finding["evidence"].get("uncertain_match")
+            ),
         }
         return {"summary": summary, "findings": sorted(findings, key=lambda x: x["rank_score"], reverse=True)}
 
@@ -71,15 +95,25 @@ class ImpactService:
             return "clearance_review", "medium", "Check local clearance and envelope around the changed part."
         return "dependency_review", "low", "Inspect downstream dependency and parent assembly assumptions."
 
-    def _reason_text(self, part_name: str, changed_key: str, rel: dict) -> str:
-        return (
+    def _downgrade_severity(self, severity: str) -> str:
+        mapping = {"high": "medium", "medium": "low", "low": "low"}
+        return mapping[severity]
+
+    def _reason_text(self, part_name: str, changed_key: str, rel: dict, uncertain: bool) -> str:
+        base = (
             f"{part_name} was flagged because it is linked to changed part '{changed_key}' "
             f"through relationship '{rel['relationship_type']}'."
         )
+        if uncertain:
+            return base + " The upstream part match included uncertainty, so this should be treated as a review hint."
+        return base
 
-    def _rank_score(self, rel: dict, severity: str) -> float:
+    def _rank_score(self, rel: dict, severity: str, uncertain: bool) -> float:
         base = {"high": 0.9, "medium": 0.6, "low": 0.3}[severity]
-        return base + float(rel.get("score", 0.0)) * 0.1
+        score = base + float(rel.get("score", 0.0)) * 0.1
+        if uncertain:
+            score -= 0.15
+        return max(score, 0.0)
 
     def _dedupe_highest(self, findings: list[dict]) -> list[dict]:
         best: dict[str, dict] = {}

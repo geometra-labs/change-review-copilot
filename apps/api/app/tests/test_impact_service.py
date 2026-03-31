@@ -22,3 +22,28 @@ def test_impact_service_generates_findings() -> None:
     assert payload["summary"]["direct_changes"] == 1
     assert payload["summary"]["affected_parts"] == 1
     assert payload["findings"][0]["part_name"] == "Bracket"
+
+
+def test_impact_service_downgrades_uncertain_findings() -> None:
+    payload = ImpactService().generate_findings(
+        changed_part_keys={"p1"},
+        parts=[
+            {"part_key": "p1", "name": "Changed Part"},
+            {"part_key": "p2", "name": "Bracket"},
+        ],
+        relationships=[
+            {
+                "source_part_key": "p1",
+                "target_part_key": "p2",
+                "relationship_type": "interface",
+                "score": 0.9,
+                "evidence": {"distance_mm": 0.1},
+            }
+        ],
+        uncertain_part_keys={"p1"},
+    )
+
+    finding = payload["findings"][0]
+    assert finding["severity"] == "medium"
+    assert finding["risk_type"].startswith("uncertain_")
+    assert finding["evidence"]["uncertain_match"] is True

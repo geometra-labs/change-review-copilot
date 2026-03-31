@@ -123,6 +123,7 @@ def test_full_api_flow(client: TestClient) -> None:
     assert payload["summary"]["direct_changes"] >= 1
     assert "findings" in payload
     assert "explanation" in payload
+    assert "viewer_payload" in payload
 
     project_detail = client.get(f"/projects/{project_id}", headers=headers)
     assert project_detail.status_code == 200, project_detail.text

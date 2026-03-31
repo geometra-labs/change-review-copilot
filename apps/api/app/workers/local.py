@@ -44,7 +44,9 @@ class LocalWorkerBackend(WorkerBackend):
                 "model_version_id": str(model_version.id),
                 "parse_status": model_version.parse_status,
             }
-        except ParseError:
+        except ParseError as exc:
+            model_version.parse_status = "failed"
+            model_version.parse_error = str(exc)
             self.db.commit()
             raise
         except Exception:
@@ -101,6 +103,8 @@ class LocalWorkerBackend(WorkerBackend):
         self.db.query(PartMatch).filter(PartMatch.comparison_run_id == run.id).delete()
         self.db.flush()
 
+        uncertain_part_keys: set[str] = set()
+
         for match in matches:
             self.db.add(
                 PartMatch(
@@ -112,6 +116,8 @@ class LocalWorkerBackend(WorkerBackend):
                     change_type=match["change_type"],
                 )
             )
+            if match["change_type"] == "uncertain_match" and match["after_part_key"]:
+                uncertain_part_keys.add(match["after_part_key"])
 
         changed_part_keys = {
             match["after_part_key"] or match["before_part_key"]
@@ -143,7 +149,9 @@ class LocalWorkerBackend(WorkerBackend):
             changed_part_keys=changed_part_keys,
             parts=[{"part_key": part.part_key, "name": part.name} for part in after_parts],
             relationships=relationship_payload,
+            uncertain_part_keys=uncertain_part_keys,
         )
+        impact_payload["summary"]["uncertain_match_count"] = len(uncertain_part_keys)
 
         FindingPersistenceService().replace_findings(self.db, run, impact_payload)
 
@@ -153,4 +161,5 @@ class LocalWorkerBackend(WorkerBackend):
         return {
             "comparison_id": str(run.id),
             "status": run.status,
+            "uncertain_match_count": len(uncertain_part_keys),
         }

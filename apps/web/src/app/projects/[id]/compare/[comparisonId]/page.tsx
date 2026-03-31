@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
+import SimpleAssemblyViewer from "@/components/SimpleAssemblyViewer";
 import { apiFetch } from "@/lib/api";
 
 type Report = {
@@ -21,6 +22,8 @@ type Report = {
     direct_changes: number;
     affected_parts: number;
     high_risk_count: number;
+    uncertain_finding_count?: number;
+    uncertain_match_count?: number;
   };
   findings: Array<{
     part_key: string | null;
@@ -35,6 +38,10 @@ type Report = {
   explanation: {
     summary_text: string;
     inspect_next_text: string;
+  };
+  viewer_payload: {
+    nodes: Array<{ part_key: string; status: string; risk_type?: string }>;
+    legend: Record<string, string>;
   };
 };
 
@@ -61,10 +68,9 @@ export default function ComparisonReportPage() {
     }
 
     try {
-      const result = await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export`, {
+      await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export`, {
         method: "POST",
       });
-      alert(`Exported to ${result.uri}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     }
@@ -86,11 +92,22 @@ export default function ComparisonReportPage() {
             <h1>Comparison Report</h1>
             <p>Status: {report.status}</p>
 
+            <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
+              <button onClick={exportReport}>Export JSON Report</button>
+              <Link href={`/projects/${projectId}/compare/${comparisonId}/artifacts`}>View Artifacts</Link>
+            </div>
+
             <section style={{ marginBottom: 24 }}>
               <h2>Summary</h2>
               <p>Direct changes: {report.summary.direct_changes}</p>
               <p>Affected parts: {report.summary.affected_parts}</p>
               <p>High-risk findings: {report.summary.high_risk_count}</p>
+              <p>Uncertain findings: {report.summary.uncertain_finding_count ?? 0}</p>
+              <p>Uncertain matches: {report.summary.uncertain_match_count ?? 0}</p>
+            </section>
+
+            <section style={{ marginBottom: 24 }}>
+              <SimpleAssemblyViewer nodes={report.viewer_payload.nodes} />
             </section>
 
             <section style={{ marginBottom: 24 }}>
@@ -154,8 +171,6 @@ export default function ComparisonReportPage() {
                 </table>
               )}
             </section>
-
-            <button onClick={exportReport}>Export JSON Report</button>
           </>
         )}
       </div>

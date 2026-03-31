@@ -6,28 +6,32 @@ from app.schemas.normalized_model import NormalizedAssembly, NormalizedRelations
 
 
 class RelationshipInferenceService:
-    """
-    Lightweight fallback inference for v1.
-    This is intentionally conservative and only adds adjacency / near_clearance
-    when no explicit relationships are provided.
-    """
-
     def infer_missing_relationships(
         self,
         model: NormalizedAssembly,
         adjacency_threshold_mm: float = 2.0,
         near_clearance_threshold_mm: float = 6.0,
     ) -> NormalizedAssembly:
-        if model.relationships:
-            return model
-
+        explicit = list(model.relationships)
         inferred: list[NormalizedRelationship] = []
-        parts = model.parts
+        part_map = {part.part_key: part for part in model.parts}
 
-        for i in range(len(parts)):
-            for j in range(i + 1, len(parts)):
-                p1 = parts[i]
-                p2 = parts[j]
+        for part in model.parts:
+            if part.parent_part_key and part.parent_part_key in part_map:
+                inferred.append(
+                    NormalizedRelationship(
+                        source_part_key=part.parent_part_key,
+                        target_part_key=part.part_key,
+                        relationship_type="parent_child",
+                        score=1.0,
+                        evidence={"inferred": True, "source": "parent_part_key"},
+                    )
+                )
+
+        for i in range(len(model.parts)):
+            for j in range(i + 1, len(model.parts)):
+                p1 = model.parts[i]
+                p2 = model.parts[j]
 
                 distance = self._bbox_gap_distance(p1.bbox.min, p1.bbox.max, p2.bbox.min, p2.bbox.max)
 
@@ -52,12 +56,29 @@ class RelationshipInferenceService:
                         )
                     )
 
+        merged = self._dedupe_relationships(explicit + inferred)
+
         return NormalizedAssembly(
             assembly_id=model.assembly_id,
             name=model.name,
             parts=model.parts,
-            relationships=inferred,
+            relationships=merged,
         )
+
+    def _dedupe_relationships(
+        self,
+        relationships: list[NormalizedRelationship],
+    ) -> list[NormalizedRelationship]:
+        best: dict[tuple[str, str, str], NormalizedRelationship] = {}
+
+        for relationship in relationships:
+            pair = tuple(sorted([relationship.source_part_key, relationship.target_part_key]))
+            key = (pair[0], pair[1], relationship.relationship_type)
+            current = best.get(key)
+            if current is None or relationship.score > current.score:
+                best[key] = relationship
+
+        return list(best.values())
 
     def _bbox_gap_distance(
         self,

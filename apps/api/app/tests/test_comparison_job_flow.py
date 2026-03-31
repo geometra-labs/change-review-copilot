@@ -72,3 +72,9 @@ def test_comparison_job_flow(client) -> None:
     job_res = client.get(f"/jobs/{cmp_data['job_id']}", headers=headers)
     assert job_res.status_code == 200
     assert job_res.json()["status"] == "completed"
+
+    report_res = client.get(f"/comparisons/{cmp_data['id']}/report", headers=headers)
+    assert report_res.status_code == 200
+    report = report_res.json()
+    assert "uncertain_match_count" in report["summary"]
+    assert "uncertain_finding_count" in report["summary"]

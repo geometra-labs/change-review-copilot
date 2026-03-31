@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.artifacts import router as artifacts_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.comparisons import router as comparisons_router
 from app.api.routes.health import router as health_router
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(parse_router)
     app.include_router(comparisons_router)
     app.include_router(jobs_router)
+    app.include_router(artifacts_router)
 
     return app
 

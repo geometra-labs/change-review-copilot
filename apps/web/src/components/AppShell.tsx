@@ -24,6 +24,7 @@ export default function AppShell({ children }: Props) {
         >
           <nav style={{ display: "flex", gap: 16 }}>
             <Link href="/projects">Projects</Link>
+            <Link href="/parsers">Parsers</Link>
           </nav>
           <LogoutButton />
         </header>

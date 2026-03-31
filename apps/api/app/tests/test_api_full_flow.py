@@ -124,6 +124,9 @@ def test_full_api_flow(client: TestClient) -> None:
     assert "findings" in payload
     assert "explanation" in payload
     assert "viewer_payload" in payload
+    assert "nodes" in payload["viewer_payload"]
+    assert payload["viewer_payload"]["nodes"]
+    assert "box" in payload["viewer_payload"]["nodes"][0]
 
     project_detail = client.get(f"/projects/{project_id}", headers=headers)
     assert project_detail.status_code == 200, project_detail.text

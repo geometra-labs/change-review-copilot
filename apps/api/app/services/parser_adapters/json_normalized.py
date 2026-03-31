@@ -9,6 +9,8 @@ from app.services.parser_adapters.base import ParserAdapter, ParserError
 
 class JsonNormalizedParserAdapter(ParserAdapter):
     supported_extensions = {".json"}
+    is_production_ready = True
+    notes = "Normalized JSON parser. Stable reference format for tests and bootstrap workflows."
 
     def parse(self, file_uri: str) -> NormalizedAssembly:
         path = Path(file_uri)

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
 
 class ExportService:
     def _ensure_dir(self, output_dir: str) -> Path:
@@ -98,21 +101,60 @@ class ExportService:
     def export_report_pdf(self, comparison_id: str, report_payload: dict, output_dir: str = ".exports") -> str:
         path = self._ensure_dir(output_dir)
         report_path = path / f"comparison_{comparison_id}.pdf"
-        lines = [
-            f"Comparison Report {comparison_id}",
-            "",
-            "Summary:",
-            json.dumps(report_payload.get("summary", {}), indent=2),
-            "",
-            "Explanation:",
-            json.dumps(report_payload.get("explanation", {}), indent=2),
-            "",
-            "Findings:",
-            json.dumps(report_payload.get("findings", []), indent=2),
-        ]
+        pdf = canvas.Canvas(str(report_path), pagesize=letter)
+        width, height = letter
+        y = height - 50
 
-        pdf_bytes = self._build_simple_pdf(lines)
-        report_path.write_bytes(pdf_bytes)
+        def line(text: str, step: int = 16) -> None:
+            nonlocal y
+            if y < 50:
+                pdf.showPage()
+                y = height - 50
+            pdf.drawString(40, y, text[:110])
+            y -= step
+
+        summary = report_payload.get("summary", {})
+        findings = report_payload.get("findings", [])
+        explanation = report_payload.get("explanation", {})
+
+        pdf.setFont("Helvetica-Bold", 16)
+        line(f"Comparison Report {comparison_id}", 24)
+
+        pdf.setFont("Helvetica-Bold", 12)
+        line("Summary", 18)
+        pdf.setFont("Helvetica", 10)
+        line(f"Direct changes: {summary.get('direct_changes', 0)}")
+        line(f"Affected parts: {summary.get('affected_parts', 0)}")
+        line(f"High-risk findings: {summary.get('high_risk_count', 0)}")
+        line(f"Uncertain findings: {summary.get('uncertain_finding_count', 0)}")
+        line(f"Uncertain matches: {summary.get('uncertain_match_count', 0)}", 24)
+
+        pdf.setFont("Helvetica-Bold", 12)
+        line("Explanation", 18)
+        pdf.setFont("Helvetica", 10)
+        for paragraph in [explanation.get("summary_text", ""), explanation.get("inspect_next_text", "")]:
+            for chunk in self._wrap(paragraph, 100):
+                line(chunk)
+            line("", 10)
+
+        pdf.setFont("Helvetica-Bold", 12)
+        line("Findings", 18)
+        pdf.setFont("Helvetica", 10)
+
+        if not findings:
+            line("No findings")
+        else:
+            for index, finding in enumerate(findings, start=1):
+                line(f"{index}. {finding.get('part_name', '-')}", 14)
+                line(f"   Severity: {finding.get('severity', '-')}")
+                line(f"   Risk: {finding.get('risk_type', '-')}")
+                for chunk in self._wrap(f"   Why: {finding.get('reason_text', '-')}", 100):
+                    line(chunk)
+                for chunk in self._wrap(f"   Inspect next: {finding.get('recommended_check', '-')}", 100):
+                    line(chunk)
+                line("", 10)
+
+        pdf.save()
         return str(report_path)
 
     def _esc(self, value: object) -> str:
@@ -124,51 +166,18 @@ class ExportService:
             .replace('"', "&quot;")
         )
 
-    def _build_simple_pdf(self, lines: list[str]) -> bytes:
-        content_lines = ["BT", "/F1 12 Tf", "72 770 Td", "14 TL"]
-        for index, line in enumerate(lines):
-            if index > 0:
-                content_lines.append("T*")
-            content_lines.append(f"({self._pdf_escape(line)}) Tj")
-        content_lines.append("ET")
-        content_stream = "\n".join(content_lines).encode("utf-8")
+    def _wrap(self, text: str, width: int) -> list[str]:
+        words = str(text).split()
+        if not words:
+            return [""]
 
-        objects = [
-            b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-            b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-            (
-                b"3 0 obj\n"
-                b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-                b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\n"
-                b"endobj\n"
-            ),
-            b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-            (
-                f"5 0 obj\n<< /Length {len(content_stream)} >>\nstream\n".encode("utf-8")
-                + content_stream
-                + b"\nendstream\nendobj\n"
-            ),
-        ]
-
-        pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-        offsets = [0]
-        for obj in objects:
-            offsets.append(len(pdf))
-            pdf.extend(obj)
-
-        xref_offset = len(pdf)
-        pdf.extend(f"xref\n0 {len(offsets)}\n".encode("ascii"))
-        pdf.extend(b"0000000000 65535 f \n")
-        for offset in offsets[1:]:
-            pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-
-        pdf.extend(
-            (
-                f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\n"
-                f"startxref\n{xref_offset}\n%%EOF\n"
-            ).encode("ascii")
-        )
-        return bytes(pdf)
-
-    def _pdf_escape(self, value: str) -> str:
-        return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        lines: list[str] = []
+        current = words[0]
+        for word in words[1:]:
+            if len(current) + 1 + len(word) <= width:
+                current += " " + word
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        return lines

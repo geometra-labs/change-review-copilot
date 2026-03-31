@@ -4,7 +4,7 @@ from pathlib import Path
 
 from app.schemas.normalized_model import NormalizedAssembly
 from app.services.parser_adapters.base import ParserError
-from app.services.parser_adapters.json_normalized import JsonNormalizedParserAdapter
+from app.services.parser_registry import ParserRegistry
 from app.services.relationship_inference_service import RelationshipInferenceService
 
 
@@ -18,20 +18,18 @@ class ParseService:
     """
 
     def __init__(self) -> None:
-        self.adapters = [
-            JsonNormalizedParserAdapter(),
-        ]
+        self.registry = ParserRegistry()
         self.relationship_inference = RelationshipInferenceService()
 
     def parse_model(self, file_uri: str) -> NormalizedAssembly:
         suffix = Path(file_uri).suffix.lower()
+        adapter = self.registry.get_adapter_for_suffix(suffix)
 
-        for adapter in self.adapters:
-            if adapter.can_handle(suffix):
-                try:
-                    model = adapter.parse(file_uri)
-                    return self.relationship_inference.infer_missing_relationships(model)
-                except ParserError as exc:
-                    raise ParseError(str(exc)) from exc
+        if not adapter:
+            raise ParseError(f"No parser implemented yet for format: {suffix}")
 
-        raise ParseError(f"No parser implemented yet for format: {suffix}")
+        try:
+            model = adapter.parse(file_uri)
+            return self.relationship_inference.infer_missing_relationships(model)
+        except ParserError as exc:
+            raise ParseError(str(exc)) from exc

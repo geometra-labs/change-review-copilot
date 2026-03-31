@@ -15,6 +15,7 @@ from app.db.models.core import (
     Part,
     PartMatch,
     Project,
+    Relationship,
     ReportArtifact,
     User,
 )
@@ -182,31 +183,137 @@ def get_report(
         {"summary": run.summary_json, "findings": finding_rows}
     )
 
+    before_parts_by_key: dict[str, Part] = {}
+    all_before_parts = db.scalars(
+        select(Part).where(Part.model_version_id == run.before_model_version_id)
+    ).all()
+    for part in all_before_parts:
+        before_parts_by_key[part.part_key] = part
+
+    after_parts_by_key: dict[str, Part] = {}
+    all_after_parts = db.scalars(
+        select(Part).where(Part.model_version_id == run.after_model_version_id)
+    ).all()
+    for part in all_after_parts:
+        after_parts_by_key[part.part_key] = part
+
+    after_relationship_rows = db.scalars(
+        select(Relationship).where(Relationship.model_version_id == run.after_model_version_id)
+    ).all()
+
+    def _dims_from_bbox(bbox: dict) -> list[float]:
+        min_corner = bbox["min"]
+        max_corner = bbox["max"]
+        return [
+            max(float(max_corner[0] - min_corner[0]), 0.1),
+            max(float(max_corner[1] - min_corner[1]), 0.1),
+            max(float(max_corner[2] - min_corner[2]), 0.1),
+        ]
+
+    def _pos_from_centroid(centroid: dict) -> list[float]:
+        return [float(centroid["x"]), float(centroid["y"]), float(centroid["z"])]
+
+    def _part_for_key(part_key: str) -> Part | None:
+        return after_parts_by_key.get(part_key) or before_parts_by_key.get(part_key)
+
     viewer_nodes: dict[str, dict] = {}
-    viewer_edges: list[dict] = []
     status_rank = {"unchanged": 0, "changed": 1, "low": 2, "medium": 3, "high": 4}
+
+    def _status_for_part(part_key: str) -> str:
+        finding = next((item for item in finding_rows if item["part_key"] == part_key), None)
+        if finding:
+            return finding["severity"]
+        changed = next(
+            (
+                row
+                for row in diff_rows
+                if row["before_part_key"] == part_key or row["after_part_key"] == part_key
+            ),
+            None,
+        )
+        if changed and changed["change_type"] != "unchanged":
+            return "changed"
+        return "unchanged"
+
+    def _upsert_viewer_node(
+        part_key: str,
+        label: str,
+        status: str,
+        risk_type: str | None,
+        part: Part | None,
+    ) -> None:
+        current = viewer_nodes.get(part_key)
+        if current is not None and status_rank[status] <= status_rank.get(current["status"], 0):
+            return
+
+        viewer_nodes[part_key] = {
+            "part_key": part_key,
+            "label": label,
+            "status": status,
+            "risk_type": risk_type,
+            "box": {
+                "position": _pos_from_centroid(part.centroid_json) if part else [0, 0, 0],
+                "dimensions": _dims_from_bbox(part.bbox_json) if part else [10, 10, 10],
+            },
+        }
+
+    for part_key, part in after_parts_by_key.items():
+        finding = next((item for item in finding_rows if item["part_key"] == part_key), None)
+        _upsert_viewer_node(
+            part_key=part_key,
+            label=part.name,
+            status=_status_for_part(part_key),
+            risk_type=finding["risk_type"] if finding else None,
+            part=part,
+        )
 
     for row in diff_rows:
         node_status = "changed" if row["change_type"] != "unchanged" else "unchanged"
         for key in [row["before_part_key"], row["after_part_key"]]:
             if not key:
                 continue
-            current = viewer_nodes.get(key)
-            if current is None or status_rank[node_status] > status_rank.get(current["status"], 0):
-                viewer_nodes[key] = {"part_key": key, "label": key, "status": node_status}
+            part = _part_for_key(key)
+            _upsert_viewer_node(
+                part_key=key,
+                label=part.name if part else key,
+                status=node_status,
+                risk_type=None,
+                part=part,
+            )
 
     for finding in finding_rows:
         part_key = finding["part_key"]
         if not part_key:
             continue
-        current = viewer_nodes.get(part_key)
-        if current is None or status_rank[finding["severity"]] > status_rank.get(current["status"], 0):
-            viewer_nodes[part_key] = {
-                "part_key": part_key,
-                "label": finding["part_name"],
-                "status": finding["severity"],
-                "risk_type": finding["risk_type"],
+        part = _part_for_key(part_key)
+        _upsert_viewer_node(
+            part_key=part_key,
+            label=finding["part_name"],
+            status=finding["severity"],
+            risk_type=finding["risk_type"],
+            part=part,
+        )
+
+    part_by_id = {part.id: part for part in all_after_parts}
+    viewer_edges: list[dict] = []
+    for relationship in after_relationship_rows:
+        source_part = part_by_id.get(relationship.source_part_id)
+        target_part = part_by_id.get(relationship.target_part_id)
+        if not source_part or not target_part:
+            continue
+        viewer_edges.append(
+            {
+                "source": source_part.part_key,
+                "target": target_part.part_key,
+                "relationship_type": relationship.relationship_type,
+                "uncertain": False,
             }
+        )
+
+    for finding in finding_rows:
+        part_key = finding["part_key"]
+        if not part_key:
+            continue
         changed_key = finding["evidence"].get("changed_part_key")
         if changed_key and part_key:
             viewer_edges.append(

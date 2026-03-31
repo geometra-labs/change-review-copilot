@@ -90,7 +90,11 @@ export default function ComparisonReportPage() {
   const filteredFindings =
     !report || !selectedPartKey
       ? report?.findings ?? []
-      : report.findings.filter((finding) => finding.part_key === selectedPartKey);
+      : report.findings.filter(
+          (finding) =>
+            finding.part_key === selectedPartKey ||
+            finding.evidence.changed_part_key === selectedPartKey
+        );
 
   return (
     <AppShell>

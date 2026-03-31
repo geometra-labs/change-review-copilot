@@ -34,6 +34,10 @@ class CleanupService:
         self._delete_model_version_related_rows(db, model_version)
         db.commit()
 
+    def delete_comparison(self, db: Session, comparison: ComparisonRun) -> None:
+        self._delete_comparison_related_rows(db, comparison)
+        db.commit()
+
     def delete_artifact(self, db: Session, artifact: ReportArtifact) -> None:
         self._delete_artifact_storage(artifact.uri)
         db.execute(delete(ReportArtifact).where(ReportArtifact.id == artifact.id))

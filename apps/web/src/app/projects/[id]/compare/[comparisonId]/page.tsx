@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
+import DeleteButton from "@/components/DeleteButton";
 import EvidenceDrawer from "@/components/EvidenceDrawer";
 import SimpleAssemblyViewer from "@/components/SimpleAssemblyViewer";
 import StatusBadge from "@/components/StatusBadge";
@@ -42,25 +43,32 @@ type Report = {
     inspect_next_text: string;
   };
   viewer_payload: {
-    nodes: Array<{ part_key: string; status: string; risk_type?: string }>;
+    nodes: Array<{ part_key: string; label?: string; status: string; risk_type?: string }>;
+    edges: Array<{ source: string; target: string; relationship_type: string; uncertain?: boolean }>;
     legend: Record<string, string>;
   };
 };
 
 export default function ComparisonReportPage() {
+  const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
   const comparisonId = params.comparisonId as string;
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPartKey, setSelectedPartKey] = useState<string | null>(null);
+
+  async function loadReport(id: string) {
+    const data = await apiFetch<Report>(`/comparisons/${id}/report`);
+    setReport(data);
+  }
 
   useEffect(() => {
     if (!comparisonId) {
       return;
     }
 
-    apiFetch<Report>(`/comparisons/${comparisonId}/report`)
-      .then(setReport)
+    loadReport(comparisonId)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load report"));
   }, [comparisonId]);
 
@@ -73,10 +81,16 @@ export default function ComparisonReportPage() {
       await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export?format=${format}`, {
         method: "POST",
       });
+      await loadReport(comparisonId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     }
   }
+
+  const filteredFindings =
+    !report || !selectedPartKey
+      ? report?.findings ?? []
+      : report.findings.filter((finding) => finding.part_key === selectedPartKey);
 
   return (
     <AppShell>
@@ -91,8 +105,19 @@ export default function ComparisonReportPage() {
           <p>Loading report...</p>
         ) : (
           <>
-            <h1>Comparison Report</h1>
-            <p>Status: <StatusBadge status={report.status} /></p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h1>Comparison Report</h1>
+                <p>Status: <StatusBadge status={report.status} /></p>
+              </div>
+              <DeleteButton
+                label="Delete Comparison"
+                onDelete={async () => {
+                  await apiFetch(`/comparisons/${comparisonId}`, { method: "DELETE" });
+                  router.push(`/projects/${projectId}`);
+                }}
+              />
+            </div>
 
             <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
               <button onClick={() => exportReport("json")}>Export JSON</button>
@@ -111,7 +136,20 @@ export default function ComparisonReportPage() {
             </section>
 
             <section style={{ marginBottom: 24 }}>
-              <SimpleAssemblyViewer nodes={report.viewer_payload.nodes} />
+              <SimpleAssemblyViewer
+                nodes={report.viewer_payload.nodes}
+                edges={report.viewer_payload.edges}
+                selectedPartKey={selectedPartKey}
+                onSelectPart={(partKey) =>
+                  setSelectedPartKey((current) => (current === partKey ? null : partKey))
+                }
+              />
+              {selectedPartKey ? (
+                <p style={{ marginTop: 8 }}>
+                  Filtering findings to selected part: <strong>{selectedPartKey}</strong>{" "}
+                  <button onClick={() => setSelectedPartKey(null)}>Clear</button>
+                </p>
+              ) : null}
             </section>
 
             <section style={{ marginBottom: 24 }}>
@@ -148,8 +186,8 @@ export default function ComparisonReportPage() {
 
             <section style={{ marginBottom: 24 }}>
               <h2>Findings</h2>
-              {report.findings.length === 0 ? (
-                <p>No affected parts exceeded the current review threshold.</p>
+              {filteredFindings.length === 0 ? (
+                <p>No findings for the current selection.</p>
               ) : (
                 <table>
                   <thead>
@@ -163,8 +201,14 @@ export default function ComparisonReportPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {report.findings.map((finding, index) => (
-                      <tr key={index}>
+                    {filteredFindings.map((finding, index) => (
+                      <tr
+                        key={index}
+                        style={{
+                          background:
+                            selectedPartKey && finding.part_key === selectedPartKey ? "#eef2ff" : "transparent",
+                        }}
+                      >
                         <td>{finding.part_name}</td>
                         <td><StatusBadge status={finding.severity} /></td>
                         <td>{finding.risk_type}</td>

@@ -183,6 +183,7 @@ def get_report(
     )
 
     viewer_nodes: dict[str, dict] = {}
+    viewer_edges: list[dict] = []
     status_rank = {"unchanged": 0, "changed": 1, "low": 2, "medium": 3, "high": 4}
 
     for row in diff_rows:
@@ -192,7 +193,7 @@ def get_report(
                 continue
             current = viewer_nodes.get(key)
             if current is None or status_rank[node_status] > status_rank.get(current["status"], 0):
-                viewer_nodes[key] = {"part_key": key, "status": node_status}
+                viewer_nodes[key] = {"part_key": key, "label": key, "status": node_status}
 
     for finding in finding_rows:
         part_key = finding["part_key"]
@@ -202,9 +203,20 @@ def get_report(
         if current is None or status_rank[finding["severity"]] > status_rank.get(current["status"], 0):
             viewer_nodes[part_key] = {
                 "part_key": part_key,
+                "label": finding["part_name"],
                 "status": finding["severity"],
                 "risk_type": finding["risk_type"],
             }
+        changed_key = finding["evidence"].get("changed_part_key")
+        if changed_key and part_key:
+            viewer_edges.append(
+                {
+                    "source": changed_key,
+                    "target": part_key,
+                    "relationship_type": finding["evidence"].get("relationship_type", "related"),
+                    "uncertain": bool(finding["evidence"].get("uncertain_match", False)),
+                }
+            )
 
     return {
         "comparison_id": str(run.id),
@@ -215,11 +227,13 @@ def get_report(
         "explanation": explanation,
         "viewer_payload": {
             "nodes": list(viewer_nodes.values()),
+            "edges": viewer_edges,
             "legend": {
                 "changed": "blue",
                 "high": "red",
                 "medium": "orange",
                 "low": "yellow",
+                "unchanged": "gray",
             },
         },
     }
@@ -333,3 +347,23 @@ def list_artifacts(
             for artifact in artifacts
         ]
     }
+
+
+@router.delete("/comparisons/{comparison_id}")
+def delete_comparison(
+    comparison_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    from app.services.cleanup_service import CleanupService
+
+    run = db.get(ComparisonRun, comparison_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Comparison not found")
+
+    project = db.get(Project, run.project_id)
+    if not project or project.owner_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    CleanupService().delete_comparison(db, run)
+    return {"deleted": True}

@@ -228,6 +228,7 @@ def get_report(
 @router.post("/comparisons/{comparison_id}/export")
 def export_report(
     comparison_id: uuid.UUID,
+    format: str = "json",
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
@@ -270,11 +271,24 @@ def export_report(
         ),
     }
 
-    uri = ExportService().export_report_json(str(run.id), report_payload)
+    exporter = ExportService()
+    export_format = format.lower().strip()
+
+    if export_format == "json":
+        uri = exporter.export_report_json(str(run.id), report_payload)
+        artifact_type = "json"
+    elif export_format == "html":
+        uri = exporter.export_report_html(str(run.id), report_payload)
+        artifact_type = "html"
+    elif export_format == "pdf":
+        uri = exporter.export_report_pdf(str(run.id), report_payload)
+        artifact_type = "pdf"
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported export format")
 
     artifact = ReportArtifact(
         comparison_run_id=run.id,
-        artifact_type="json",
+        artifact_type=artifact_type,
         uri=uri,
     )
     db.add(artifact)

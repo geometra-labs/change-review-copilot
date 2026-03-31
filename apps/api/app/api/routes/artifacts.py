@@ -14,6 +14,14 @@ from app.db.session import get_db
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
 
+def _media_type_for_artifact(artifact_type: str) -> str:
+    return {
+        "json": "application/json",
+        "html": "text/html",
+        "pdf": "application/pdf",
+    }.get(artifact_type, "application/octet-stream")
+
+
 @router.get("/{artifact_id}/download")
 def download_artifact(
     artifact_id: uuid.UUID,
@@ -36,7 +44,11 @@ def download_artifact(
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Artifact file missing")
 
-    return FileResponse(path=path, filename=path.name, media_type="application/json")
+    return FileResponse(
+        path=path,
+        filename=path.name,
+        media_type=_media_type_for_artifact(artifact.artifact_type),
+    )
 
 
 @router.delete("/{artifact_id}")

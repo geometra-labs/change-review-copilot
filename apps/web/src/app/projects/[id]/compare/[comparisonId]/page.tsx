@@ -5,7 +5,9 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
+import EvidenceDrawer from "@/components/EvidenceDrawer";
 import SimpleAssemblyViewer from "@/components/SimpleAssemblyViewer";
+import StatusBadge from "@/components/StatusBadge";
 import { apiFetch } from "@/lib/api";
 
 type Report = {
@@ -62,13 +64,13 @@ export default function ComparisonReportPage() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load report"));
   }, [comparisonId]);
 
-  async function exportReport() {
+  async function exportReport(format: "json" | "html" | "pdf") {
     if (!comparisonId) {
       return;
     }
 
     try {
-      await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export`, {
+      await apiFetch<{ uri: string }>(`/comparisons/${comparisonId}/export?format=${format}`, {
         method: "POST",
       });
     } catch (err) {
@@ -90,10 +92,12 @@ export default function ComparisonReportPage() {
         ) : (
           <>
             <h1>Comparison Report</h1>
-            <p>Status: {report.status}</p>
+            <p>Status: <StatusBadge status={report.status} /></p>
 
             <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
-              <button onClick={exportReport}>Export JSON Report</button>
+              <button onClick={() => exportReport("json")}>Export JSON</button>
+              <button onClick={() => exportReport("html")}>Export HTML</button>
+              <button onClick={() => exportReport("pdf")}>Export PDF</button>
               <Link href={`/projects/${projectId}/compare/${comparisonId}/artifacts`}>View Artifacts</Link>
             </div>
 
@@ -155,16 +159,18 @@ export default function ComparisonReportPage() {
                       <th>Risk</th>
                       <th>Why Flagged</th>
                       <th>Inspect Next</th>
+                      <th>Evidence</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.findings.map((finding, index) => (
                       <tr key={index}>
                         <td>{finding.part_name}</td>
-                        <td>{finding.severity}</td>
+                        <td><StatusBadge status={finding.severity} /></td>
                         <td>{finding.risk_type}</td>
                         <td>{finding.reason_text}</td>
                         <td>{finding.recommended_check}</td>
+                        <td><EvidenceDrawer evidence={finding.evidence} /></td>
                       </tr>
                     ))}
                   </tbody>

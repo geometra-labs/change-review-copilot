@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
+import DeleteButton from "@/components/DeleteButton";
+import StatusBadge from "@/components/StatusBadge";
 import { getToken } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
 
@@ -22,13 +24,17 @@ export default function ArtifactsPage() {
   const [items, setItems] = useState<Artifact[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  async function loadArtifacts(targetComparisonId: string) {
+    const data = await apiFetch<{ items: Artifact[] }>(`/comparisons/${targetComparisonId}/artifacts`);
+    setItems(data.items);
+  }
+
   useEffect(() => {
     if (!comparisonId) {
       return;
     }
 
-    apiFetch<{ items: Artifact[] }>(`/comparisons/${comparisonId}/artifacts`)
-      .then((data) => setItems(data.items))
+    loadArtifacts(comparisonId)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load artifacts"));
   }, [comparisonId]);
 
@@ -52,12 +58,13 @@ export default function ArtifactsPage() {
                 <th>Type</th>
                 <th>Created</th>
                 <th>Download</th>
+                <th>Delete</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.artifact_type}</td>
+                  <td><StatusBadge status={item.artifact_type} /></td>
                   <td>{item.created_at}</td>
                   <td>
                     <button
@@ -77,7 +84,7 @@ export default function ArtifactsPage() {
                           const url = window.URL.createObjectURL(blob);
                           const anchor = document.createElement("a");
                           anchor.href = url;
-                          anchor.download = `artifact_${item.id}.json`;
+                          anchor.download = `artifact_${item.id}.${item.artifact_type}`;
                           anchor.click();
                           window.URL.revokeObjectURL(url);
                         } catch (err) {
@@ -87,6 +94,14 @@ export default function ArtifactsPage() {
                     >
                       Download
                     </button>
+                  </td>
+                  <td>
+                    <DeleteButton
+                      onDelete={async () => {
+                        await apiFetch(`/artifacts/${item.id}`, { method: "DELETE" });
+                        await loadArtifacts(comparisonId);
+                      }}
+                    />
                   </td>
                 </tr>
               ))}

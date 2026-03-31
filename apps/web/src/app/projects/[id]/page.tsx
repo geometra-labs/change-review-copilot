@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AppShell from "@/components/AppShell";
+import DeleteButton from "@/components/DeleteButton";
+import StatusBadge from "@/components/StatusBadge";
 import { apiFetch } from "@/lib/api";
 
 type ProjectDetail = {
@@ -31,18 +33,23 @@ type ProjectDetail = {
 };
 
 export default function ProjectDetailPage() {
+  const router = useRouter();
   const params = useParams();
   const projectId = params.id as string;
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function loadProject(id: string) {
+    const data = await apiFetch<ProjectDetail>(`/projects/${id}`);
+    setProject(data);
+  }
 
   useEffect(() => {
     if (!projectId) {
       return;
     }
 
-    apiFetch<ProjectDetail>(`/projects/${projectId}`)
-      .then(setProject)
+    loadProject(projectId)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load project"));
   }, [projectId]);
 
@@ -54,8 +61,19 @@ export default function ProjectDetailPage() {
           <p>Loading project...</p>
         ) : (
           <>
-            <h1>{project.name}</h1>
-            <p>{project.description}</p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h1>{project.name}</h1>
+                <p>{project.description}</p>
+              </div>
+              <DeleteButton
+                label="Delete Project"
+                onDelete={async () => {
+                  await apiFetch(`/projects/${project.id}`, { method: "DELETE" });
+                  router.push("/projects");
+                }}
+              />
+            </div>
 
             <div style={{ display: "flex", gap: 16, marginBottom: 24 }}>
               <Link href={`/projects/${project.id}/upload`}>Upload versions</Link>
@@ -75,6 +93,7 @@ export default function ProjectDetailPage() {
                       <th>Status</th>
                       <th>Error</th>
                       <th>Open</th>
+                      <th>Delete</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -82,10 +101,18 @@ export default function ProjectDetailPage() {
                       <tr key={modelVersion.id}>
                         <td>{modelVersion.label}</td>
                         <td>{modelVersion.source_type}</td>
-                        <td>{modelVersion.parse_status}</td>
+                        <td><StatusBadge status={modelVersion.parse_status} /></td>
                         <td>{modelVersion.parse_error ?? "-"}</td>
                         <td>
                           <Link href={`/projects/${project.id}/models/${modelVersion.id}`}>View</Link>
+                        </td>
+                        <td>
+                          <DeleteButton
+                            onDelete={async () => {
+                              await apiFetch(`/model-versions/${modelVersion.id}`, { method: "DELETE" });
+                              await loadProject(project.id);
+                            }}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -112,7 +139,7 @@ export default function ProjectDetailPage() {
                     {project.comparisons.map((comparison) => (
                       <tr key={comparison.id}>
                         <td>{comparison.id}</td>
-                        <td>{comparison.status}</td>
+                        <td><StatusBadge status={comparison.status} /></td>
                         <td>{JSON.stringify(comparison.summary_json)}</td>
                         <td>
                           <Link href={`/projects/${project.id}/compare/${comparison.id}`}>View Report</Link>
